@@ -1,35 +1,35 @@
 import aiogram
 from aiogram import types, Dispatcher
+from stickerify import stickerify
+from PIL import Image
+from io import BytesIO
 
 user_sticker_packs = {}
 
 
 async def handle_start(message: types.Message):
     user_id = message.from_user.id
-    if user_id not in user_sticker_packs:
-        sticker_pack_name = f"user_{user_id}_by_your_bot_name"
-
-        # Create a sticker pack via telegram api
-
-        user_sticker_packs[user_id] = sticker_pack_name
-        await message.reply(
-            "Welcome! Your personal sticker pack has been created. Send me a picture to add it to your sticker pack.")
-    else:
-        await message.reply("Welcome back! Send me a picture to add to your sticker pack.")
+    await message.reply("Welcome to Stickerify bot!")
 
 
-async def handle_photo(message: types.Message):
-    user_id = message.from_user.id
-    if user_id in user_sticker_packs:
-        sticker_pack_name = user_sticker_packs[user_id]
+async def handle_photo(message: types.Message, bot):
+    photo = message.photo[-1]
 
-        # Add a photo to sticker pack via telegram api
+    file = await bot.get_file(photo.file_id)
+    file_path = file.file_path
+    contents = await bot.download_file(file_path)
 
-        await message.reply("Picture added to your sticker pack!")
-    else:
-        await message.reply("Please start by sending /start to create your sticker pack.")
+    image = Image.open(BytesIO(contents.getvalue()))
+    stickerified_image = stickerify(image)
 
+    bio = BytesIO()
+    bio.name = 'image.jpeg'
+    stickerified_image.save(bio, 'JPEG')
+    bio.seek(0)
 
-def setup_handlers(dp: Dispatcher):
+    # Send the processed image back to the user
+    await bot.send_photo(chat_id=message.chat.id, photo=bio, caption="Here is your sticker")
+
+def setup_handlers(dp: Dispatcher, bot):
     dp.register_message_handler(handle_start, commands=['start'])
-    dp.register_message_handler(handle_photo, content_types=['photo'])
+    dp.register_message_handler(lambda message: handle_photo(message, bot), content_types=['photo'])
