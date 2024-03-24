@@ -5,7 +5,8 @@
 ### Датасеты: 
 https://huggingface.co/datasets/misshimichka/flower_faces_dataset_v3 (Тася),
 https://huggingface.co/datasets/misshimichka/face_stickers_cleared (Тася + Леша),
-https://huggingface.co/datasets/Alexator26/703_stickers_improved_v1 (Леша + Дима)
+https://huggingface.co/datasets/Alexator26/703_stickers_improved_v1 (Леша + Дима),
+https://www.kaggle.com/datasets/dmitrykutsenko/synthetic-stickers-dataset (Дима)
 
 Еще больше датасетов смотрите в наших профилях на HuggingFace 🤗
 
