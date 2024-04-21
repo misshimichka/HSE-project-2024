@@ -3,6 +3,7 @@ from aiogram import types, Dispatcher
 from stickerify import stickerify, pipelines_dict
 from PIL import Image
 from io import BytesIO
+from collections import deque
 
 photo_storage = {}
 
@@ -23,7 +24,9 @@ async def handle_photo(message: types.Message, bot):
     photo = message.photo[-1]
     file_id = photo.file_id
     chat_id = message.chat.id
-    photo_storage[chat_id] = file_id
+    if chat_id not in photo_storage.keys():
+        photo_storage[chat_id] = deque()
+    photo_storage[chat_id].append(file_id)
 
     await message.reply("Choose your sticker style:", reply_markup=get_styles_markup())
 
@@ -31,8 +34,8 @@ async def handle_photo(message: types.Message, bot):
 async def process_stickerify_callback(callback_query: types.CallbackQuery, bot):
     chat_id = callback_query.from_user.id
     sticker_style = callback_query.data
-    if chat_id in photo_storage:
-        file_id = photo_storage[chat_id]
+    if chat_id in photo_storage.keys() and len(photo_storage[chat_id]) > 0:
+        file_id = photo_storage[chat_id].popleft()
         try:
             file = await bot.get_file(file_id)
             file_path = file.file_path
@@ -49,8 +52,6 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery, bot):
             bio.seek(0)
 
             await bot.send_photo(chat_id, photo=bio, caption="Here is your sticker! 🎁")
-
-            del photo_storage[chat_id]
 
         except Exception as e:
             await bot.send_message(chat_id, f"Sorry, an error occurred.")
