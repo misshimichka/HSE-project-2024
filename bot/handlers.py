@@ -12,7 +12,8 @@ def get_styles_markup():
     markup = types.InlineKeyboardMarkup()
     default_btn = types.InlineKeyboardButton("Default 🤫🧏‍", callback_data="default")
     flowers_btn = types.InlineKeyboardButton("Flowers 🌸🌺", callback_data="flowers")
-    markup.add(default_btn, flowers_btn)
+    cats_btn = types.InlineKeyboardButton("Cats", callback_data="cats")
+    markup.add(default_btn, flowers_btn, cats_btn)
     return markup
 
 
