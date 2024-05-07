@@ -10,7 +10,7 @@ from aiogram.filters import CommandStart
 from aiogram import F
 
 import torch
-from diffusers import (StableDiffusionInstructPix2PixPipeline, DiffusionPipeline)
+from diffusers import StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
 
 import modal
 
@@ -19,7 +19,13 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 stub = modal.Stub("hse-project-1k")
-image = modal.Image.debian_slim().pip_install("aiogram", "pillow", "diffusers", "torch", "transformers")
+image = modal.Image.debian_slim().apt_install("git", "ffmpeg", "libsm6", "libxext6").pip_install(
+    "aiogram", "pillow", "torch", "torchvision"
+)
+image = image.pip_install(
+    "git+https://github.com/huggingface/diffusers",
+    "transformers", "peft", "opencv-python"
+)
 stub.image = image
 
 
@@ -38,54 +44,115 @@ web_app = Starlette(debug=True, routes=[
 
 logging.basicConfig(level=logging.INFO)
 
-pipelines_dict = {
-    "default": 0,
-    "flowers": 1
-}
-
 photo_storage = {}
 
-model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
 model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
+model_cat_id = "misshimichka/pix2pix_cat_ears"
+model_clown_id = "misshimichka/pix2pix_clown_faces"
+model_butterfly_id = "misshimichka/pix2pix_butterflies"
 
 
 @stub.cls(gpu="T4")
 class Model:
-    def __enter__(self):
-        # self.device = "cuda" if torch.cuda.is_available() else "cpu"
+    def __init__(self):
+        self.detector = None
+        self.pipeline = None
+        self.models = self.models = {
+            "flowers": model_flowers_id,
+            "cat": model_cat_id,
+            "butterfly": model_butterfly_id,
+            "clown": model_clown_id
+        }
+
+    @modal.build()  # add another step to the image build
+    def download_model_to_folder(self):
+        from huggingface_hub import snapshot_download, hf_hub_download
+
+        snapshot_download(
+            "misshimichka/instructPix2PixCartoon_4860_ckpt",
+            cache_dir="pix2pix"
+        )
+        snapshot_download(
+            "h94/IP-Adapter"
+        )
+        snapshot_download(
+            repo_id="latent-consistency/lcm-lora-sdv1-5"
+        )
+
+        for key in self.models:
+            snapshot_download(
+                self.models[key],
+                cache_dir=f"{key}"
+            )
+
+    @modal.enter()
+    def setup(self):
+        self.models = {
+            "flowers": model_flowers_id,
+            "cat": model_cat_id,
+            "butterfly": model_butterfly_id,
+            "clown": model_clown_id
+        }
 
         print("Loading model...")
 
-        default_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            model_id, torch_dtype=torch.float16, safety_checker=None).to("cuda")
-
-        self.pipelines = [default_pipeline,
-                          DiffusionPipeline.from_pretrained(model_flowers_id,
-                                                            torch_dtype=torch.float16,
-                                                            safety_checker=None).to("cuda")
-                          ]
-
     @modal.method()
     def generate(self, original_image, mode):
+        print("Loading style...")
+
+        if mode == "default":
+            self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+                "misshimichka/instructPix2PixCartoon_4860_ckpt",
+                torch_dtype=torch.float16,
+                safety_checker=None,
+                local_files_only=True,
+                cache_dir="pix2pix"
+            )
+        else:
+            self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+                self.models[mode],
+                torch_dtype=torch.float16,
+                safety_checker=None,
+                local_files_only=True,
+                cache_dir=mode
+            )
+
+        self.pipeline.load_ip_adapter(
+            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
+            subfolder="models",
+            weight_name="ip-adapter_sd15.bin",
+            local_files_only=True
+        )
+        self.pipeline.set_ip_adapter_scale(1)
+
+        self.pipeline.load_lora_weights(
+            pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
+            weight_name="pytorch_lora_weights.safetensors",
+            local_files_only=True)
+
         print("Generating image...")
 
-        original_image = original_image.resize((512, 512))
-        generator = torch.Generator(device="cuda").manual_seed(42)
-        assert mode in pipelines_dict.keys()
-        edited_image = self.pipelines[pipelines_dict[mode]](
-            "Refashion the photo into a sticker.",
+        self.pipeline = self.pipeline.to("cuda")
+
+        edited_image = self.pipeline(
+            prompt="Refashion the photo into a sticker.",
             image=original_image,
-            num_inference_steps=20,
-            image_guidance_scale=1.5,
-            guidance_scale=7,
-            generator=generator).images[0]
+            ip_adapter_image=original_image,
+            num_inference_steps=4,
+            image_guidance_scale=1,
+            guidance_scale=2,
+        ).images[0]
         return edited_image
 
 
 def get_styles_markup():
     default_btn = types.InlineKeyboardButton(text="Default 🤫🧏‍", callback_data="default")
     flowers_btn = types.InlineKeyboardButton(text="Flowers 🌸🌺", callback_data="flowers")
-    markup = types.InlineKeyboardMarkup(inline_keyboard=[[default_btn, flowers_btn]])
+    cat_btn = types.InlineKeyboardButton(text="Cat ears 🐈🐱", callback_data="cat")
+    butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data="butterfly")
+    clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data="clown")
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[[default_btn, flowers_btn], [cat_btn, butterfly_btn], [clown_btn]])
     return markup
 
 
