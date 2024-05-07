@@ -2,6 +2,9 @@ from PIL import Image
 from io import BytesIO
 import os
 import logging
+import cv2
+import face_detection
+import numpy as np
 
 from aiogram.types import update, FSInputFile
 from aiogram.enums import ParseMode
@@ -10,7 +13,7 @@ from aiogram.filters import CommandStart
 from aiogram import F
 
 import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
+from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler
 
 import modal
 
@@ -24,6 +27,7 @@ image = modal.Image.debian_slim().apt_install("git", "ffmpeg", "libsm6", "libxex
 )
 image = image.pip_install(
     "git+https://github.com/huggingface/diffusers",
+    "git+https://github.com/hukkelas/DSFD-Pytorch-Inference",
     "transformers", "peft", "opencv-python"
 )
 stub.image = image
@@ -73,10 +77,12 @@ class Model:
             cache_dir="pix2pix"
         )
         snapshot_download(
-            "h94/IP-Adapter"
+            "h94/IP-Adapter",
+            cache_dir="adapter"
         )
         snapshot_download(
-            repo_id="latent-consistency/lcm-lora-sdv1-5"
+            repo_id="latent-consistency/lcm-lora-sdv1-5",
+            cache_dir="lcm"
         )
 
         for key in self.models:
@@ -95,6 +101,33 @@ class Model:
         }
 
         print("Loading model...")
+
+        self.detector = face_detection.build_detector(
+            "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+
+    def crop_img(self, im):
+        if isinstance(im, Image.Image):
+            im = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
+        elif isinstance(im, str) and os.path.exists(im):
+            im = cv2.imread(im)
+            im = cv2.resize(im, (512, 512))
+            im = im[:, :, ::-1]
+        else:
+            raise Exception("Can't handle img")
+
+        detections = self.detector.detect(im)
+
+        assert detections.shape[0] == 1
+        xmin, ymin, xmax, ymax, _ = [int(i) + 1 for i in detections.tolist()[0]]
+        ymin = max(0, ymin - 50)
+        ymax = min(512, ymax + 50)
+        xmin = max(0, xmin - 50)
+        xmax = min(xmax + 50, 512)
+        cropped_img = im[ymin:ymax, xmin:xmax]
+
+        im_pil = Image.fromarray(cropped_img)
+        img = im_pil.resize((512, 512))
+        return img
 
     @modal.method()
     def generate(self, original_image, mode):
@@ -121,23 +154,29 @@ class Model:
             pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
             subfolder="models",
             weight_name="ip-adapter_sd15.bin",
-            local_files_only=True
+            local_files_only=True,
+            cache_dir="adapter"
         )
         self.pipeline.set_ip_adapter_scale(1)
+
+        self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
 
         self.pipeline.load_lora_weights(
             pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
             weight_name="pytorch_lora_weights.safetensors",
+            cache_dir="lcm",
             local_files_only=True)
 
         print("Generating image...")
 
         self.pipeline = self.pipeline.to("cuda")
 
+        cropped_image = self.crop_img(original_image)
+
         edited_image = self.pipeline(
             prompt="Refashion the photo into a sticker.",
-            image=original_image,
-            ip_adapter_image=original_image,
+            image=cropped_image,
+            ip_adapter_image=cropped_image,
             num_inference_steps=4,
             image_guidance_scale=1,
             guidance_scale=2,
