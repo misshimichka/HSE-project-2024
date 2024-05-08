@@ -21,7 +21,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-stub = modal.Stub("hse-project-1k")
+stub = modal.App("hse-project-1k")
 image = modal.Image.debian_slim().apt_install("git", "ffmpeg", "libsm6", "libxext6").pip_install(
     "aiogram", "pillow", "torch", "torchvision"
 )
@@ -86,20 +86,14 @@ class Model:
         )
 
         for key in self.models:
-            snapshot_download(
+            hf_hub_download(
                 self.models[key],
+                subfolder="unet",
                 cache_dir=f"{key}"
             )
 
     @modal.enter()
     def setup(self):
-        self.models = {
-            "flowers": model_flowers_id,
-            "cat": model_cat_id,
-            "butterfly": model_butterfly_id,
-            "clown": model_clown_id
-        }
-
         print("Loading model...")
 
         self.detector = face_detection.build_detector(
@@ -243,7 +237,7 @@ def setup_handlers(router: Router):
     router.callback_query.register(process_stickerify_callback)
 
 
-@stub.function(image=image, secrets=[modal.Secret.from_name("hse_bot")])
+@stub.function(image=image, secrets=[modal.Secret.from_name("hse-bot-token")])
 @modal.asgi_app()
 def run_app():
     router = Router()
@@ -253,7 +247,7 @@ def run_app():
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
 
-    bot = Bot(os.environ["hse_bot_token"], parse_mode=ParseMode.HTML)
+    bot = Bot(os.environ["hse_bot"], parse_mode=ParseMode.HTML)
 
     web_app.state.dispatcher = dispatcher
     web_app.state.bot = bot
