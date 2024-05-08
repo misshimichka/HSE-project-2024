@@ -68,7 +68,7 @@ class Model:
             "clown": model_clown_id
         }
 
-    @modal.build()  # add another step to the image build
+    @modal.build()
     def download_model_to_folder(self):
         from huggingface_hub import snapshot_download, hf_hub_download
 
@@ -86,9 +86,8 @@ class Model:
         )
 
         for key in self.models:
-            hf_hub_download(
+            snapshot_download(
                 self.models[key],
-                subfolder="unet",
                 cache_dir=f"{key}"
             )
 
