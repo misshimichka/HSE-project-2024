@@ -5,6 +5,7 @@ import logging
 import cv2
 import face_detection
 import numpy as np
+from collections import deque
 
 from aiogram.types import update, FSInputFile, BufferedInputFile
 from aiogram.enums import ParseMode
@@ -131,7 +132,10 @@ class Model:
 
         detections = self.detector.detect(im)
 
-        assert detections.shape[0] == 1
+        # assert detections.shape[0] == 1
+        if detections.shape[0] != 1:
+            return None
+
         xmin, ymin, xmax, ymax, _ = [int(i) + 1 for i in detections.tolist()[0]]
         ymin = max(0, ymin - 100)
         ymax = min(512, ymax + 100)
@@ -173,6 +177,9 @@ class Model:
 
         cropped_image = self.crop_img(original_image)
 
+        if not cropped_image:
+            return None
+
         edited_image = self.pipeline(
             prompt="Refashion the photo into a sticker.",
             image=cropped_image,
@@ -208,7 +215,9 @@ async def handle_photo(message: types.Message):
     photo = message.photo[-1]
     file_id = photo.file_id
     chat_id = message.chat.id
-    photo_storage[chat_id] = file_id
+    if chat_id not in photo_storage.keys():
+        photo_storage[chat_id] = deque()
+    photo_storage[chat_id].append(file_id)
 
     await message.reply("Choose your sticker style:", reply_markup=get_styles_markup())
 
@@ -216,34 +225,37 @@ async def handle_photo(message: types.Message):
 async def process_stickerify_callback(callback_query: types.CallbackQuery):
     chat_id = callback_query.from_user.id
     sticker_style = callback_query.data
-    if chat_id in photo_storage:
-        file_id = photo_storage[chat_id]
+    if chat_id in photo_storage.keys() and len(photo_storage[chat_id]) > 0:
+        file_id = photo_storage[chat_id].popleft()
         try:
             file = await web_app.state.bot.get_file(file_id)
             file_path = file.file_path
             contents = await web_app.state.bot.download_file(file_path)
 
-            await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-
             img = Image.open(BytesIO(contents.getvalue()))
+
             stickerified_image = web_app.state.model.generate.remote(img, sticker_style)
+            if not stickerified_image:
+                await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
+                                                              "photo, or there were too many of them 😰 Please, "
+                                                              "send another photo.")
+                return
+
+            await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
             stickerified_image.save(f"result{chat_id}.webp", "webp")
 
             await web_app.state.bot.send_sticker(
                 chat_id=chat_id,
                 sticker=FSInputFile(f"result{chat_id}.webp"),
                 emoji="🎁",
-
             )
-
-            del photo_storage[chat_id]
 
         except Exception as e:
             print(e)
             await web_app.state.bot.send_message(chat_id, f"Sorry, an error occurred.")
 
     else:
-        await web_app.state.bot.send_message(chat_id, "I couldn't find your photo. Please send it again.")
+        await web_app.state.bot.send_message(chat_id, "We couldn't find your photo. Please send it again.")
 
 
 def setup_handlers(router: Router):
