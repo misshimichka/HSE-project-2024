@@ -1,4 +1,4 @@
-## Проект по созданию датасета стикеров и обучению модели для генерации стикеров
+## Проект по обучению модели для генерации стикеров
 
 ### Обзор
 Основная задача - обучение модели для трансформации изображений в стилизованные стикеры и добавление к ним анимаций.
@@ -9,10 +9,12 @@
    - Исходные изображения различных объектов без лиц.
    - Пары изображений: оригинал и его стилизованная версия в виде стикера.
    - Работа с датасетом велась в течение 1.5-2 месяцев.
+   - [Превью небольшой части датасета](https://huggingface.co/datasets/Alexator26/479_stickers_improved_v2)
 
-2. **Датасет лиц** ([Превью датасета](https://huggingface.co/datasets/Alexator26/479_stickers_improved_v2))
+2. **Датасет лиц**
    - Содержит пары изображений: фотографии лиц и соответствующие стикеры.
    - Разработка и очистка датасета заняли около 2 недель.
+   - [Превью небольшой части датасета](https://huggingface.co/datasets/misshimichka/face_stickers_cleared)
 
 ### Ноутбуки и их функции
 
@@ -22,7 +24,7 @@
 - `prompt-collecting.ipynb` - сбор промптов через парсинг диалогов с ChatGPT.
 - `prompt-filtration.ipynb` - фильтрация промптов, удаление дубликатов.
 - `synthetic-dataset-generation.ipynb` - генерация датасета с использованием базы данных Firebase.
-- `calc_metrics.ipynb` - расчет метрик сходства стикеров и исходных изображений.
+- `calc_metrics.ipynb` - очистка датасета и расчет метрик.
 
 #### Для датасета лиц:
 
@@ -42,9 +44,15 @@
 
 ### Визуальные примеры работы модели
 
-- Исходное фото пользователя: `img1.jpg`
-- Стикер старой модели: `img2.jpg`
-- Сетка стикеров новой модели: `img3.jpg`
+**Исходное фото пользователя**  
+<img src="imgs/img1.jpg" width="400">
+
+**Стикер старой модели**  
+<img src="imgs/img2.jpg" width="400">
+
+**Сетка стикеров новой модели**  
+<img src="imgs/img3.jpg" width="400">
+
 
 ### Внешние ресурсы
 
@@ -53,12 +61,10 @@
 - [Датасет клоунское лицо](https://huggingface.co/datasets/misshimichka/clown_faces_dataset_cleared)
 - [Датасет бабочек](https://huggingface.co/datasets/misshimichka/butterfly_faces_dataset_v1)
 - [Датасет уши кошки](https://huggingface.co/datasets/misshimichka/cat_faces_dataset_cleared)
-- [Датасет объекты базовый стиль](https://huggingface.co/datasets/Alexator26/479_stickers_improved_v2)
-- [Датасет объекты базовый стиль v1](https://huggingface.co/datasets/Alexator26/703_stickers_improved_v1)
-- [Датасет лица базовый стиль](https://huggingface.co/datasets/misshimichka/face_stickers_cleared)
 
 ---
 
 ### Демо
 
 Попробуйте нашего бота в Telegram для демонстрации возможностей генерации стикеров: [Telegram Bot](https://t.me/hse_project_test_bot)
+
