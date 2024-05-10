@@ -20,21 +20,21 @@
 
 #### Для датасета объектов:
 
-- `prompt-collecting-with-api.ipynb` - сбор промптов через API ChatGPT.
-- `prompt-collecting.ipynb` - сбор промптов через парсинг диалогов с ChatGPT.
-- `prompt-filtration.ipynb` - фильтрация промптов, удаление дубликатов.
-- `synthetic-dataset-generation.ipynb` - генерация датасета с использованием базы данных Firebase.
-- `calc_metrics.ipynb` - очистка датасета и расчет метрик.
+- `objects-data-collection/prompt-collecting-with-api.ipynb` - сбор промптов через API ChatGPT.
+- `objects-data-collection/prompt-collecting.ipynb` - сбор промптов через парсинг диалогов с ChatGPT.
+- `objects-data-collection/prompt-filtration.ipynb` - фильтрация промптов, удаление дубликатов.
+- `objects-data-collection/synthetic-dataset-generation.ipynb` - генерация датасета с использованием базы данных Firebase.
+- `objects-data-collection/calc_metrics.ipynb` - очистка датасета и расчет метрик.
 
 #### Для датасета лиц:
 
-- `generate-faces.ipynb` - генерация стикеров из фотографий лиц.
-- `drop-similar.ipynb` - удаление похожих фотографий лиц.
-- `faces-clean-notebook.ipynb` - очистка датасета и расчет метрик.
+- `faces-data-collection/generate-faces.ipynb` - генерация стикеров из фотографий лиц.
+- `faces-data-collection/drop-similar.ipynb` - удаление похожих фотографий лиц.
+- `faces-data-collection/faces-clean-notebook.ipynb` - очистка датасета и расчет метрик.
 
 ### Обучение модели
 
-- `train_pix2pix.ipynb` - обучение модели pix2pix для трансформации лиц в стикеры.
+- `model-training/train_pix2pix.ipynb` - обучение модели pix2pix для трансформации лиц в стикеры.
 - Процесс дообучения стилей, интеграция существующих стилей в базовую модель.
 
 ### Улучшение модели и визуализация результатов
