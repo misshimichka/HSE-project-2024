@@ -56,6 +56,7 @@ model_cat_id = "misshimichka/pix2pix_cat_ears"
 model_clown_id = "misshimichka/pix2pix_clown_faces"
 model_butterfly_id = "misshimichka/pix2pix_butterflies"
 model_pink_id = "misshimichka/pix2pix_pink_hair"
+model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
 
 
 @stub.cls(gpu="T4")
@@ -65,6 +66,7 @@ class Model:
         self.detector = None
         self.pipeline = None
         self.models = {
+            "default": model_id,
             "flowers": model_flowers_id,
             "cat": model_cat_id,
             "butterfly": model_butterfly_id,
@@ -76,10 +78,6 @@ class Model:
     def download_model_to_folder(self):
         from huggingface_hub import snapshot_download
 
-        snapshot_download(
-            "misshimichka/instructPix2PixCartoon_4860_ckpt",
-            cache_dir="pix2pix"
-        )
         snapshot_download(
             "h94/IP-Adapter",
             cache_dir="adapter"
@@ -106,11 +104,11 @@ class Model:
             "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
 
         self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            "misshimichka/instructPix2PixCartoon_4860_ckpt",
+            model_id,
             torch_dtype=torch.float16,
             safety_checker=None,
             local_files_only=True,
-            cache_dir="pix2pix"
+            cache_dir="default"
         )
 
         self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
@@ -135,10 +133,10 @@ class Model:
 
         assert detections.shape[0] == 1
         xmin, ymin, xmax, ymax, _ = [int(i) + 1 for i in detections.tolist()[0]]
-        ymin = max(0, ymin - 50)
-        ymax = min(512, ymax + 50)
-        xmin = max(0, xmin - 50)
-        xmax = min(xmax + 50, 512)
+        ymin = max(0, ymin - 100)
+        ymax = min(512, ymax + 100)
+        xmin = max(0, xmin - 100)
+        xmax = min(xmax + 100, 512)
         cropped_img = im[ymin:ymax, xmin:xmax]
 
         im_pil = Image.fromarray(cropped_img)
@@ -150,14 +148,15 @@ class Model:
         print("Loading style...")
         print(mode)
 
-        if mode != "default":
-            self.pipeline.unet = UNet2DConditionModel.from_pretrained(
-                self.models[mode],
-                subfolder="unet",
-                torch_dtype=torch.float16,
-                local_files_only=True,
-                cache_dir=mode
-            )
+        self.pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
+
+        self.pipeline.unet = UNet2DConditionModel.from_pretrained(
+            self.models[mode],
+            subfolder="unet",
+            torch_dtype=torch.float16,
+            local_files_only=True,
+            cache_dir=mode
+        )
 
         self.pipeline.load_ip_adapter(
             pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
