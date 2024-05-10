@@ -113,15 +113,6 @@ class Model:
             cache_dir="pix2pix"
         )
 
-        self.pipeline.load_ip_adapter(
-            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
-            subfolder="models",
-            weight_name="ip-adapter_sd15.bin",
-            local_files_only=True,
-            cache_dir="adapter"
-        )
-        self.pipeline.set_ip_adapter_scale(1)
-
         self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
 
         self.pipeline.load_lora_weights(
@@ -167,6 +158,15 @@ class Model:
                 local_files_only=True,
                 cache_dir=mode
             )
+
+        self.pipeline.load_ip_adapter(
+            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
+            subfolder="models",
+            weight_name="ip-adapter_sd15.bin",
+            local_files_only=True,
+            cache_dir="adapter"
+        )
+        self.pipeline.set_ip_adapter_scale(1)
 
         self.pipeline = self.pipeline.to("cuda")
 
@@ -228,11 +228,13 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
             img = Image.open(BytesIO(contents.getvalue()))
             stickerified_image = web_app.state.model.generate.remote(img, sticker_style)
+            stickerified_image.save(f"result{chat_id}.webp", "webp")
 
             await web_app.state.bot.send_sticker(
                 chat_id=chat_id,
-                sticker=BufferedInputFile(stickerified_image.tobytes(), filename="file.webp"),
-                emoji="🎁"
+                sticker=FSInputFile(f"result{chat_id}.webp"),
+                emoji="🎁",
+
             )
 
             del photo_storage[chat_id]
