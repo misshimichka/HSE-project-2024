@@ -6,14 +6,15 @@ import cv2
 import face_detection
 import numpy as np
 
-from aiogram.types import update, FSInputFile
+from aiogram.types import update, FSInputFile, BufferedInputFile
 from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import CommandStart
 from aiogram import F
 
 import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler
+from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler, UNet2DConditionModel
+from transformers import AutoModelForImageSegmentation
 
 import modal
 
@@ -54,23 +55,26 @@ model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
 model_cat_id = "misshimichka/pix2pix_cat_ears"
 model_clown_id = "misshimichka/pix2pix_clown_faces"
 model_butterfly_id = "misshimichka/pix2pix_butterflies"
+model_pink_id = "misshimichka/pix2pix_pink_hair"
 
 
 @stub.cls(gpu="T4")
 class Model:
     def __init__(self):
+        self.bg_remover = None
         self.detector = None
         self.pipeline = None
-        self.models = self.models = {
+        self.models = {
             "flowers": model_flowers_id,
             "cat": model_cat_id,
             "butterfly": model_butterfly_id,
-            "clown": model_clown_id
+            "clown": model_clown_id,
+            "pink": model_pink_id
         }
 
     @modal.build()
     def download_model_to_folder(self):
-        from huggingface_hub import snapshot_download, hf_hub_download
+        from huggingface_hub import snapshot_download
 
         snapshot_download(
             "misshimichka/instructPix2PixCartoon_4860_ckpt",
@@ -91,12 +95,40 @@ class Model:
                 cache_dir=f"{key}"
             )
 
+        self.detector = face_detection.build_detector(
+            "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+
     @modal.enter()
     def setup(self):
         print("Loading model...")
 
         self.detector = face_detection.build_detector(
             "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+
+        self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+            "misshimichka/instructPix2PixCartoon_4860_ckpt",
+            torch_dtype=torch.float16,
+            safety_checker=None,
+            local_files_only=True,
+            cache_dir="pix2pix"
+        )
+
+        self.pipeline.load_ip_adapter(
+            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
+            subfolder="models",
+            weight_name="ip-adapter_sd15.bin",
+            local_files_only=True,
+            cache_dir="adapter"
+        )
+        self.pipeline.set_ip_adapter_scale(1)
+
+        self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
+
+        self.pipeline.load_lora_weights(
+            pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
+            weight_name="pytorch_lora_weights.safetensors",
+            cache_dir="lcm",
+            local_files_only=True)
 
     def crop_img(self, im):
         if isinstance(im, Image.Image):
@@ -125,44 +157,20 @@ class Model:
     @modal.method()
     def generate(self, original_image, mode):
         print("Loading style...")
+        print(mode)
 
-        if mode == "default":
-            self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-                "misshimichka/instructPix2PixCartoon_4860_ckpt",
-                torch_dtype=torch.float16,
-                safety_checker=None,
-                local_files_only=True,
-                cache_dir="pix2pix"
-            )
-        else:
-            self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+        if mode != "default":
+            self.pipeline.unet = UNet2DConditionModel.from_pretrained(
                 self.models[mode],
+                subfolder="unet",
                 torch_dtype=torch.float16,
-                safety_checker=None,
                 local_files_only=True,
                 cache_dir=mode
             )
 
-        self.pipeline.load_ip_adapter(
-            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
-            subfolder="models",
-            weight_name="ip-adapter_sd15.bin",
-            local_files_only=True,
-            cache_dir="adapter"
-        )
-        self.pipeline.set_ip_adapter_scale(1)
-
-        self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
-
-        self.pipeline.load_lora_weights(
-            pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
-            weight_name="pytorch_lora_weights.safetensors",
-            cache_dir="lcm",
-            local_files_only=True)
+        self.pipeline = self.pipeline.to("cuda")
 
         print("Generating image...")
-
-        self.pipeline = self.pipeline.to("cuda")
 
         cropped_image = self.crop_img(original_image)
 
@@ -174,6 +182,7 @@ class Model:
             image_guidance_scale=1,
             guidance_scale=2,
         ).images[0]
+
         return edited_image
 
 
@@ -183,8 +192,12 @@ def get_styles_markup():
     cat_btn = types.InlineKeyboardButton(text="Cat ears 🐈🐱", callback_data="cat")
     butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data="butterfly")
     clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data="clown")
+    pink_btn = types.InlineKeyboardButton(text="Pink hair 🩷✨", callback_data="pink")
     markup = types.InlineKeyboardMarkup(
-        inline_keyboard=[[default_btn, flowers_btn], [cat_btn, butterfly_btn], [clown_btn]])
+        inline_keyboard=[[default_btn, flowers_btn],
+                         [cat_btn, butterfly_btn],
+                         [clown_btn, pink_btn]]
+    )
     return markup
 
 
@@ -216,14 +229,16 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             img = Image.open(BytesIO(contents.getvalue()))
             stickerified_image = web_app.state.model.generate.remote(img, sticker_style)
 
-            stickerified_image.save(f"{chat_id}_result.jpeg", "JPEG")
-
-            await web_app.state.bot.send_photo(chat_id=chat_id, photo=FSInputFile(path=f"{chat_id}_result.jpeg"),
-                                               caption="Here is your sticker! 🎁")
+            await web_app.state.bot.send_sticker(
+                chat_id=chat_id,
+                sticker=BufferedInputFile(stickerified_image.tobytes(), filename="file.webp"),
+                emoji="🎁"
+            )
 
             del photo_storage[chat_id]
 
         except Exception as e:
+            print(e)
             await web_app.state.bot.send_message(chat_id, f"Sorry, an error occurred.")
 
     else:
