@@ -10,7 +10,7 @@ from collections import deque
 from aiogram.types import update, FSInputFile, BufferedInputFile
 from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher, Router, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram import F
 
 import torch
@@ -222,6 +222,10 @@ async def handle_photo(message: types.Message):
     await message.reply("Choose your sticker style:", reply_markup=get_styles_markup())
 
 
+async def handle_debug(message: types.Message):
+    print(photo_storage)
+
+
 async def process_stickerify_callback(callback_query: types.CallbackQuery):
     chat_id = callback_query.from_user.id
     sticker_style = callback_query.data
@@ -234,6 +238,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
             img = Image.open(BytesIO(contents.getvalue()))
 
+            await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
             stickerified_image = web_app.state.model.generate.remote(img, sticker_style)
             if not stickerified_image:
                 await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
@@ -241,7 +246,6 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
                                                               "send another photo.")
                 return
 
-            await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
             stickerified_image.save(f"result{chat_id}.webp", "webp")
 
             await web_app.state.bot.send_sticker(
@@ -261,6 +265,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 def setup_handlers(router: Router):
     router.message.register(handle_start, CommandStart())
     router.message.register(handle_photo, F.content_type.in_({'photo'}))
+    router.message.register(handle_debug, Command("debug"))
     router.callback_query.register(process_stickerify_callback)
 
 
