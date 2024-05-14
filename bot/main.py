@@ -7,15 +7,14 @@ import face_detection
 import numpy as np
 from collections import deque
 
-from aiogram.types import update, FSInputFile, BufferedInputFile
+from aiogram.types import update, FSInputFile
 from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import CommandStart, Command
 from aiogram import F
 
 import torch
-from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler, UNet2DConditionModel
-from transformers import AutoModelForImageSegmentation
+from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler
 
 import modal
 
@@ -32,7 +31,52 @@ image = image.pip_install(
     "git+https://github.com/hukkelas/DSFD-Pytorch-Inference",
     "transformers", "peft", "opencv-python"
 )
+
+
+def load_weights():
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(
+        "h94/IP-Adapter",
+        cache_dir="adapter"
+    )
+    snapshot_download(
+        repo_id="latent-consistency/lcm-lora-sdv1-5",
+        cache_dir="lcm"
+    )
+
+    for key in models:
+        snapshot_download(
+            models[key],
+            cache_dir=f"{key}"
+        )
+
+    detector = face_detection.build_detector(
+        "DSFDDetector",
+        confidence_threshold=.5,
+        nms_iou_threshold=.3
+    )
+
+
+image = image.run_function(load_weights)
+
 stub.image = image
+
+model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
+model_cat_id = "misshimichka/pix2pix_cat_ears"
+model_clown_id = "misshimichka/pix2pix_clown_faces"
+model_butterfly_id = "misshimichka/pix2pix_butterflies"
+model_pink_id = "misshimichka/pix2pix_pink_hair"
+model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
+
+models = {
+    "default": model_id,
+    "flowers": model_flowers_id,
+    "cat": model_cat_id,
+    "butterfly": model_butterfly_id,
+    "clown": model_clown_id,
+    "pink": model_pink_id
+}
 
 
 async def webhook(request):
@@ -52,144 +96,90 @@ logging.basicConfig(level=logging.INFO)
 
 photo_storage = {}
 
-model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
-model_cat_id = "misshimichka/pix2pix_cat_ears"
-model_clown_id = "misshimichka/pix2pix_clown_faces"
-model_butterfly_id = "misshimichka/pix2pix_butterflies"
-model_pink_id = "misshimichka/pix2pix_pink_hair"
-model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
+
+@stub.function(image=image, gpu="T4")
+def crop_image(im):
+    if isinstance(im, Image.Image):
+        im = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
+    elif isinstance(im, str) and os.path.exists(im):
+        im = cv2.imread(im)
+        im = cv2.resize(im, (512, 512))
+        im = im[:, :, ::-1]
+    else:
+        raise Exception("Can't handle img")
+
+    detector = face_detection.build_detector(
+        "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+    detections = detector.detect(im)
+
+    # assert detections.shape[0] == 1
+    if detections.shape[0] != 1:
+        return None
+
+    x_min, y_min, x_max, y_max, _ = [int(i) + 1 for i in detections.tolist()[0]]
+    y_min = max(0, y_min - 100)
+    y_max = min(512, y_max + 100)
+    x_min = max(0, x_min - 100)
+    x_max = min(x_max + 100, 512)
+    cropped_img = im[y_min:y_max, x_min:x_max]
+
+    im_pil = Image.fromarray(cropped_img)
+    img = im_pil.resize((512, 512))
+    return img
 
 
-@stub.cls(gpu="T4")
-class Model:
-    def __init__(self):
-        self.bg_remover = None
-        self.detector = None
-        self.pipeline = None
-        self.models = {
-            "default": model_id,
-            "flowers": model_flowers_id,
-            "cat": model_cat_id,
-            "butterfly": model_butterfly_id,
-            "clown": model_clown_id,
-            "pink": model_pink_id
-        }
+@stub.function(image=image, gpu="T4")
+def generate(original_image, mode):
+    print("Loading style...")
+    print(mode)
 
-    @modal.build()
-    def download_model_to_folder(self):
-        from huggingface_hub import snapshot_download
+    pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+        models[mode],
+        torch_dtype=torch.float16,
+        safety_checker=None,
+        local_files_only=True,
+        cache_dir=mode
+    )
 
-        snapshot_download(
-            "h94/IP-Adapter",
-            cache_dir="adapter"
-        )
-        snapshot_download(
-            repo_id="latent-consistency/lcm-lora-sdv1-5",
-            cache_dir="lcm"
-        )
+    pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
 
-        for key in self.models:
-            snapshot_download(
-                self.models[key],
-                cache_dir=f"{key}"
-            )
+    pipeline.load_lora_weights(
+        pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
+        weight_name="pytorch_lora_weights.safetensors",
+        cache_dir="lcm",
+        local_files_only=True
+    )
 
-        self.detector = face_detection.build_detector(
-            "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+    pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
 
-    @modal.enter()
-    def setup(self):
-        print("Loading model...")
+    pipeline.load_ip_adapter(
+        pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
+        subfolder="models",
+        weight_name="ip-adapter_sd15.bin",
+        local_files_only=True,
+        cache_dir="adapter"
+    )
+    pipeline.set_ip_adapter_scale(1)
 
-        self.detector = face_detection.build_detector(
-            "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+    pipeline = pipeline.to("cuda")
 
-        self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16,
-            safety_checker=None,
-            local_files_only=True,
-            cache_dir="default"
-        )
+    print("Generating image...")
 
-        self.pipeline.scheduler = LCMScheduler.from_config(self.pipeline.scheduler.config)
+    cropped_image = crop_image.remote(original_image)
 
-        self.pipeline.load_lora_weights(
-            pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
-            weight_name="pytorch_lora_weights.safetensors",
-            cache_dir="lcm",
-            local_files_only=True)
+    if not cropped_image:
+        return None
 
-    def crop_img(self, im):
-        if isinstance(im, Image.Image):
-            im = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
-        elif isinstance(im, str) and os.path.exists(im):
-            im = cv2.imread(im)
-            im = cv2.resize(im, (512, 512))
-            im = im[:, :, ::-1]
-        else:
-            raise Exception("Can't handle img")
+    edited_image = pipeline(
+        prompt="Refashion the photo into a sticker.",
+        image=cropped_image,
+        ip_adapter_image=cropped_image,
+        num_inference_steps=4,
+        image_guidance_scale=1,
+        guidance_scale=2,
+    ).images[0]
 
-        detections = self.detector.detect(im)
-
-        # assert detections.shape[0] == 1
-        if detections.shape[0] != 1:
-            return None
-
-        xmin, ymin, xmax, ymax, _ = [int(i) + 1 for i in detections.tolist()[0]]
-        ymin = max(0, ymin - 100)
-        ymax = min(512, ymax + 100)
-        xmin = max(0, xmin - 100)
-        xmax = min(xmax + 100, 512)
-        cropped_img = im[ymin:ymax, xmin:xmax]
-
-        im_pil = Image.fromarray(cropped_img)
-        img = im_pil.resize((512, 512))
-        return img
-
-    @modal.method()
-    def generate(self, original_image, mode):
-        print("Loading style...")
-        print(mode)
-
-        self.pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
-
-        self.pipeline.unet = UNet2DConditionModel.from_pretrained(
-            self.models[mode],
-            subfolder="unet",
-            torch_dtype=torch.float16,
-            local_files_only=True,
-            cache_dir=mode
-        )
-
-        self.pipeline.load_ip_adapter(
-            pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
-            subfolder="models",
-            weight_name="ip-adapter_sd15.bin",
-            local_files_only=True,
-            cache_dir="adapter"
-        )
-        self.pipeline.set_ip_adapter_scale(1)
-
-        self.pipeline = self.pipeline.to("cuda")
-
-        print("Generating image...")
-
-        cropped_image = self.crop_img(original_image)
-
-        if not cropped_image:
-            return None
-
-        edited_image = self.pipeline(
-            prompt="Refashion the photo into a sticker.",
-            image=cropped_image,
-            ip_adapter_image=cropped_image,
-            num_inference_steps=4,
-            image_guidance_scale=1,
-            guidance_scale=2,
-        ).images[0]
-
-        return edited_image
+    return edited_image
 
 
 def get_styles_markup():
@@ -239,7 +229,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             img = Image.open(BytesIO(contents.getvalue()))
 
             await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-            stickerified_image = web_app.state.model.generate.remote(img, sticker_style)
+            stickerified_image = generate.remote(img, sticker_style)
             if not stickerified_image:
                 await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
                                                               "photo, or there were too many of them 😰 Please, "
@@ -283,6 +273,5 @@ def run_app():
 
     web_app.state.dispatcher = dispatcher
     web_app.state.bot = bot
-    web_app.state.model = Model()
 
     return web_app
