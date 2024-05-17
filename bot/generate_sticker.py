@@ -26,6 +26,38 @@ models = {
 }
 
 
+def load_pipeline(mode):
+    pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+        models[mode],
+        torch_dtype=torch.float16,
+        safety_checker=None,
+        local_files_only=True,
+        cache_dir=mode
+    )
+
+    pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
+
+    pipeline.load_lora_weights(
+        pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
+        weight_name="pytorch_lora_weights.safetensors",
+        cache_dir="lcm",
+        local_files_only=True
+    )
+
+    pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
+
+    pipeline.load_ip_adapter(
+        pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
+        subfolder="models",
+        weight_name="ip-adapter_sd15.bin",
+        local_files_only=True,
+        cache_dir="adapter"
+    )
+    pipeline.set_ip_adapter_scale(1)
+
+    return pipeline
+
+
 def image_grid(imgs, rows, cols):
     assert len(imgs) == rows * cols
     w, h = imgs[0].size
@@ -66,35 +98,7 @@ def generate(original_image, mode, chat_id):
     print("Loading style...")
     print(mode)
 
-    pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-        models[mode],
-        torch_dtype=torch.float16,
-        safety_checker=None,
-        local_files_only=True,
-        cache_dir=mode
-    )
-
-    pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
-
-    pipeline.load_lora_weights(
-        pretrained_model_name_or_path_or_dict="latent-consistency/lcm-lora-sdv1-5",
-        weight_name="pytorch_lora_weights.safetensors",
-        cache_dir="lcm",
-        local_files_only=True
-    )
-
-    pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
-
-    pipeline.load_ip_adapter(
-        pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
-        subfolder="models",
-        weight_name="ip-adapter_sd15.bin",
-        local_files_only=True,
-        cache_dir="adapter"
-    )
-    pipeline.set_ip_adapter_scale(1)
-
-    pipeline = pipeline.to("cuda")
+    pipeline = load_pipeline(mode).to("cuda")
 
     print("Generating image...")
 
