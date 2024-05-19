@@ -132,8 +132,7 @@ def load_pipeline(mode):
 
 def crop_image(im):
     if isinstance(im, Image.Image):
-        w, h = im.size
-        im.thumbnail((max(w, h), max(w, h)), Image.LANCZOS)
+        im = im.resize((512, 512))
         im = np.array(im)
     elif isinstance(im, str) and os.path.exists(im):
         im = cv2.imread(im)
