@@ -1,5 +1,6 @@
+import io
+
 from PIL import Image
-from io import BytesIO
 import os
 import logging
 import cv2
@@ -51,7 +52,7 @@ def load_weights():
             cache_dir=f"{key}"
         )
 
-    detector = face_detection.build_detector(
+    face_detection.build_detector(
         "DSFDDetector",
         confidence_threshold=.5,
         nms_iou_threshold=.3
@@ -97,42 +98,7 @@ logging.basicConfig(level=logging.INFO)
 photo_storage = {}
 
 
-@stub.function(image=image, gpu="T4")
-def crop_image(im):
-    if isinstance(im, Image.Image):
-        im = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
-    elif isinstance(im, str) and os.path.exists(im):
-        im = cv2.imread(im)
-        im = cv2.resize(im, (512, 512))
-        im = im[:, :, ::-1]
-    else:
-        raise Exception("Can't handle img")
-
-    detector = face_detection.build_detector(
-        "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
-    detections = detector.detect(im)
-
-    # assert detections.shape[0] == 1
-    if detections.shape[0] != 1:
-        return None
-
-    x_min, y_min, x_max, y_max, _ = [int(i) + 1 for i in detections.tolist()[0]]
-    y_min = max(0, y_min - 100)
-    y_max = min(512, y_max + 100)
-    x_min = max(0, x_min - 100)
-    x_max = min(x_max + 100, 512)
-    cropped_img = im[y_min:y_max, x_min:x_max]
-
-    im_pil = Image.fromarray(cropped_img)
-    img = im_pil.resize((512, 512))
-    return img
-
-
-@stub.function(image=image, gpu="T4")
-def generate(original_image, mode):
-    print("Loading style...")
-    print(mode)
-
+def load_pipeline(mode):
     pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
         models[mode],
         torch_dtype=torch.float16,
@@ -161,11 +127,50 @@ def generate(original_image, mode):
     )
     pipeline.set_ip_adapter_scale(1)
 
-    pipeline = pipeline.to("cuda")
+    return pipeline
+
+
+def crop_image(im):
+    if isinstance(im, Image.Image):
+        w, h = im.size
+        im.thumbnail((max(w, h), max(w, h)), Image.LANCZOS)
+        im = np.array(im)
+    elif isinstance(im, str) and os.path.exists(im):
+        im = cv2.imread(im)
+        im = cv2.resize(im, (512, 512))
+        im = im[:, :, ::-1]
+    else:
+        raise Exception("Can't handle img")
+
+    detector = face_detection.build_detector(
+        "DSFDDetector", confidence_threshold=.5, nms_iou_threshold=.3)
+    detections = detector.detect(im)
+
+    if detections.shape[0] != 1:
+        return None
+
+    x_min, y_min, x_max, y_max, _ = [int(i) + 1 for i in detections.tolist()[0]]
+    y_min = max(0, y_min - 50)
+    y_max = min(512, y_max + 50)
+    x_min = max(0, x_min - 50)
+    x_max = min(x_max + 50, 512)
+    cropped_img = im[y_min:y_max, x_min:x_max]
+
+    img = Image.fromarray(cropped_img)
+    img = img.resize((512, 512))
+    return img
+
+
+@stub.function(image=image, gpu="T4")
+def generate(original_image, mode):
+    print("Loading style...")
+    print(mode)
+
+    pipeline = load_pipeline(mode).to("cuda")
 
     print("Generating image...")
 
-    cropped_image = crop_image.remote(original_image)
+    cropped_image = crop_image(original_image)
 
     if not cropped_image:
         return None
@@ -226,10 +231,10 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             file_path = file.file_path
             contents = await web_app.state.bot.download_file(file_path)
 
-            img = Image.open(BytesIO(contents.getvalue()))
+            im = Image.open(contents)
 
             await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-            stickerified_image = generate.remote(img, sticker_style)
+            stickerified_image = generate.remote(im, sticker_style)
             if not stickerified_image:
                 await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
                                                               "photo, or there were too many of them 😰 Please, "
