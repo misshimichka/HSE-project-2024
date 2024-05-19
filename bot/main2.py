@@ -140,7 +140,7 @@ def setup_handlers(router: Router):
     router.callback_query.register(process_stickerify_callback)
 
 
-bot = Bot("7110638399:AAEA5ksrQVE31EYAOQf4n6LjYK87X_yvm-8", parse_mode=ParseMode.HTML)
+bot = Bot("YOUR_TOKEN_HERE", parse_mode=ParseMode.HTML)
 
 
 async def main():
