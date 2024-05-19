@@ -3,8 +3,8 @@ from collections import OrderedDict
 
 import torch
 
-from face_alignment.modules.keypoint_detector import KPDetector
-import face_alignment.modules.generator as GEN
+from modules.keypoint_detector import KPDetector
+import modules.generator as GEN
 from sync_batchnorm import DataParallelWithCallback
 
 import face_detection
