@@ -7,6 +7,7 @@ import cv2
 import face_detection
 import numpy as np
 from collections import deque
+import uuid
 
 from aiogram.types import update, FSInputFile
 from aiogram.enums import ParseMode
@@ -94,9 +95,6 @@ web_app = Starlette(debug=True, routes=[
 ])
 
 logging.basicConfig(level=logging.INFO)
-
-photo_storage = {}
-
 
 def load_pipeline(mode):
     pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -186,13 +184,16 @@ def generate(original_image, mode):
     return edited_image
 
 
-def get_styles_markup():
-    default_btn = types.InlineKeyboardButton(text="Default 🤫🧏‍", callback_data="default")
-    flowers_btn = types.InlineKeyboardButton(text="Flowers 🌸🌺", callback_data="flowers")
-    cat_btn = types.InlineKeyboardButton(text="Cat ears 🐈🐱", callback_data="cat")
-    butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data="butterfly")
-    clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data="clown")
-    pink_btn = types.InlineKeyboardButton(text="Pink hair 🩷✨", callback_data="pink")
+callback_data_storage = {}
+
+
+def get_styles_markup(photo_id):
+    default_btn = types.InlineKeyboardButton(text="Default 🤫🧏‍", callback_data=f"default:{photo_id}")
+    flowers_btn = types.InlineKeyboardButton(text="Flowers 🌸🌺", callback_data=f"flowers:{photo_id}")
+    cat_btn = types.InlineKeyboardButton(text="Cat ears 🐈🐱", callback_data=f"cat:{photo_id}")
+    butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data=f"butterfly:{photo_id}")
+    clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data=f"clown:{photo_id}")
+    pink_btn = types.InlineKeyboardButton(text="Pink hair 🩷✨", callback_data=f"pink:{photo_id}")
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[[default_btn, flowers_btn],
                          [cat_btn, butterfly_btn],
@@ -206,60 +207,50 @@ async def handle_start(message: types.Message):
 
 
 async def handle_photo(message: types.Message):
-    photo = message.photo[-1]
-    file_id = photo.file_id
-    chat_id = message.chat.id
-    if chat_id not in photo_storage.keys():
-        photo_storage[chat_id] = deque()
-    photo_storage[chat_id].append(file_id)
-
-    await message.reply("Choose your sticker style:", reply_markup=get_styles_markup())
-
-
-async def handle_debug(message: types.Message):
-    print(photo_storage)
+    photo_id = message.photo[-1].file_id
+    unique_id = str(uuid.uuid4())
+    callback_data_storage[unique_id] = photo_id
+    await message.reply("Choose your sticker style:", reply_markup=get_styles_markup(unique_id))
 
 
 async def process_stickerify_callback(callback_query: types.CallbackQuery):
     chat_id = callback_query.from_user.id
-    sticker_style = callback_query.data
-    if chat_id in photo_storage.keys() and len(photo_storage[chat_id]) > 0:
-        file_id = photo_storage[chat_id].popleft()
-        try:
-            file = await web_app.state.bot.get_file(file_id)
-            file_path = file.file_path
-            contents = await web_app.state.bot.download_file(file_path)
-
-            im = Image.open(contents)
-
-            await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-            stickerified_image = generate.remote(im, sticker_style)
-            if not stickerified_image:
-                await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
-                                                              "photo, or there were too many of them 😰 Please, "
-                                                              "send another photo.")
-                return
-
-            stickerified_image.save(f"result{chat_id}.webp", "webp")
-
-            await web_app.state.bot.send_sticker(
-                chat_id=chat_id,
-                sticker=FSInputFile(f"result{chat_id}.webp"),
-                emoji="🎁",
-            )
-
-        except Exception as e:
-            print(e)
-            await web_app.state.bot.send_message(chat_id, f"Sorry, an error occurred.")
-
-    else:
+    sticker_style, unique_id = callback_query.data.split(":")
+    file_id = callback_data_storage.get(unique_id)
+    if not file_id:
         await web_app.state.bot.send_message(chat_id, "We couldn't find your photo. Please send it again.")
+        return
+    try:
+        file = await web_app.state.bot.get_file(file_id)
+        file_path = file.file_path
+        contents = await web_app.state.bot.download_file(file_path)
+
+        im = Image.open(contents)
+
+        await web_app.state.bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
+        stickerified_image = generate.remote(im, sticker_style)
+        if not stickerified_image:
+            await web_app.state.bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
+                                                          "photo, or there were too many of them 😰 Please, "
+                                                          "send another photo.")
+            return
+
+        stickerified_image.save(f"result{file_id}.webp", "webp")
+
+        await web_app.state.bot.send_sticker(
+            chat_id=chat_id,
+            sticker=FSInputFile(f"result{file_id}.webp"),
+            emoji="🎁",
+        )
+
+    except Exception as e:
+        print(e)
+        await web_app.state.bot.send_message(chat_id, f"Sorry, an error occurred.")
 
 
 def setup_handlers(router: Router):
     router.message.register(handle_start, CommandStart())
     router.message.register(handle_photo, F.content_type.in_({'photo'}))
-    router.message.register(handle_debug, Command("debug"))
     router.callback_query.register(process_stickerify_callback)
 
 
