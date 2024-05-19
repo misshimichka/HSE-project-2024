@@ -69,7 +69,7 @@ def image_grid(imgs, rows, cols):
 
 def crop_image(im):
     if isinstance(im, Image.Image):
-        im = cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
+        im = np.array(im)
     elif isinstance(im, str) and os.path.exists(im):
         im = cv2.imread(im)
         im = cv2.resize(im, (512, 512))
@@ -83,10 +83,10 @@ def crop_image(im):
 
     assert detections.shape[0] == 1
     x_min, y_min, x_max, y_max, _ = [int(i) + 1 for i in detections.tolist()[0]]
-    y_min = max(0, y_min - 100)
-    y_max = min(512, y_max + 100)
-    x_min = max(0, x_min - 100)
-    x_max = min(x_max + 100, 512)
+    y_min = max(0, y_min - 50)
+    y_max = min(512, y_max + 50)
+    x_min = max(0, x_min - 50)
+    x_max = min(x_max + 50, 512)
     cropped_img = im[y_min:y_max, x_min:x_max]
 
     im_pil = Image.fromarray(cropped_img)
