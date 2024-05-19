@@ -104,7 +104,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
             if sticker_style != 'animate':
                 await bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-                stickerified_images = generate(img, sticker_style, chat_id)
+                stickerified_images = generate(f"{chat_id}.jpg", sticker_style, chat_id)
                 if not stickerified_images:
                     await bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
                                                     "photo, or there were too many of them 😰 Please, "
