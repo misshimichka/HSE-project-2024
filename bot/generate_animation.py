@@ -7,7 +7,10 @@ from PIL import Image
 
 from animate import normalize_kp
 
-from main2 import generator, kp_detector, opt
+from load_weights import load_checkpoints, opt
+
+
+generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
 
 
 def get_frames(file_path):

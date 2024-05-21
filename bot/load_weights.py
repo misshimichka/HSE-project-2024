@@ -1,5 +1,6 @@
 import yaml
 from collections import OrderedDict
+from argparse import Namespace
 
 import torch
 
@@ -9,8 +10,25 @@ from sync_batchnorm import DataParallelWithCallback
 
 import face_detection
 
-from main2 import opt
 from generate_sticker import models
+
+
+opt = Namespace(
+    config='config/vox-256.yaml',
+    checkpoint='/kaggle/input/checkpoint/00000099-checkpoint.pth.tar',
+    source_image='img.jpg',
+    relative=True,
+    adapt_scale=True,
+    generator='Unet_Generator_keypoint_aware',
+    kp_num=15,
+    mb_channel=512,
+    mb_spatial=32,
+    mbunit='ExpendMemoryUnit',
+    memsize=1,
+    find_best_frame=False,
+    best_frame=None,
+    cpu=False
+)
 
 
 def load_checkpoints(config_path, checkpoint_path, cpu=False):

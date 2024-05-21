@@ -2,7 +2,6 @@ import sys
 import logging
 import asyncio
 from collections import deque
-from argparse import Namespace
 
 from aiogram.types import FSInputFile
 from aiogram.enums import ParseMode
@@ -10,7 +9,7 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import CommandStart, Command
 from aiogram import F
 
-from load_weights import *
+from load_weights import load_weights
 from generate_sticker import *
 from generate_animation import *
 
@@ -18,25 +17,6 @@ photo_storage = {}
 
 if sys.version_info[0] < 3:
     raise Exception("You must use Python 3 or higher. Recommended version is Python 3.7")
-
-opt = Namespace(
-    config='config/vox-256.yaml',
-    checkpoint='/kaggle/input/checkpoint/00000099-checkpoint.pth.tar',
-    source_image='img.jpg',
-    relative=True,
-    adapt_scale=True,
-    generator='Unet_Generator_keypoint_aware',
-    kp_num=15,
-    mb_channel=512,
-    mb_spatial=32,
-    mbunit='ExpendMemoryUnit',
-    memsize=1,
-    find_best_frame=False,
-    best_frame=None,
-    cpu=False
-)
-
-generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
 
 
 def get_styles_markup():
