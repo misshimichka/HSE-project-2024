@@ -26,7 +26,6 @@ def get_styles_markup():
     butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data="butterfly")
     clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data="clown")
     pink_btn = types.InlineKeyboardButton(text="Pink hair 🩷✨", callback_data="pink")
-    # animate_btn = types.InlineKeyboardButton(text="Animate 🐈", callback_data="animate")
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[[default_btn, flowers_btn],
                          [cat_btn, butterfly_btn],
@@ -106,7 +105,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             stickerified_images.save(f"{chat_id}_result.jpeg")
             await bot.send_photo(chat_id,
                                  photo=FSInputFile(path=f"{chat_id}_result.jpeg"),
-                                 caption="Type number from 1 to 9 to pick up sticker."
+                                 caption="Type number from 1 to 4 to pick up sticker."
                                  )
 
         except Exception as e:
@@ -118,7 +117,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
 
 def setup_handlers(router: Router):
-    router.message.register(handle_selection, F.text.lower().in_(['1', '2', '3', '4', '5', '6', '7', '8', '9']))
+    router.message.register(handle_selection, F.text.lower().in_(['1', '2', '3', '4']))
     router.message.register(handle_start, CommandStart())
     router.message.register(handle_photo, F.content_type.in_({'photo'}))
     router.message.register(handle_debug, Command("debug"))
