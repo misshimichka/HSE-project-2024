@@ -26,12 +26,11 @@ def get_styles_markup():
     butterfly_btn = types.InlineKeyboardButton(text="Butterflies 🦋🌈", callback_data="butterfly")
     clown_btn = types.InlineKeyboardButton(text="Clown 🤡🤣", callback_data="clown")
     pink_btn = types.InlineKeyboardButton(text="Pink hair 🩷✨", callback_data="pink")
-    animate_btn = types.InlineKeyboardButton(text="Animate 🐈", callback_data="animate")
+    # animate_btn = types.InlineKeyboardButton(text="Animate 🐈", callback_data="animate")
     markup = types.InlineKeyboardMarkup(
         inline_keyboard=[[default_btn, flowers_btn],
                          [cat_btn, butterfly_btn],
-                         [clown_btn, pink_btn],
-                         [animate_btn]]
+                         [clown_btn, pink_btn]]
     )
     return markup
 
@@ -43,6 +42,21 @@ async def handle_selection(message: types.Message):
         chat_id=chat_id,
         sticker=FSInputFile(f"result{index}_{chat_id}.webp"),
         emoji="🎁",
+    )
+
+    await bot.send_message(
+        chat_id, "Started generating your animation!"
+    )
+
+    generate_animation(
+        image_path=f"result{index}_{chat_id}.webp",
+        video_path='wow-grey.mp4',
+        output_path=f"{chat_id}.mp4"
+    )
+
+    await bot.send_video(
+        chat_id=chat_id,
+        video=FSInputFile(f"{chat_id}.mp4")
     )
 
 
@@ -80,30 +94,20 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             contents = await bot.download_file(file_path)
 
             img = Image.open(contents)
-            img.save(f"{chat_id}.jpg")
 
-            if sticker_style != 'animate':
-                await bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-                stickerified_images = generate(f"{chat_id}.jpg", sticker_style, chat_id)
-                if not stickerified_images:
-                    await bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
-                                                    "photo, or there were too many of them 😰 Please, "
-                                                    "send another photo.")
-                    return
+            await bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
+            stickerified_images = generate(img, sticker_style, chat_id)
+            if not stickerified_images:
+                await bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
+                                                "photo, or there were too many of them 😰 Please, "
+                                                "send another photo.")
+                return
 
-                stickerified_images.save(f"{chat_id}_result.jpeg")
-                await bot.send_photo(chat_id, photo=FSInputFile(path=f"{chat_id}_result.jpeg"),
-                                     caption="Type number from 1 to 9 to pick up sticker.")
-            else:
-                await bot.send_message(chat_id, "Started animating your sticker! 👨‍🔬")
-
-                generate_animation(f"{chat_id}.jpg", 'wow-grey.mp4', f"{chat_id}.webm")
-
-                await bot.send_sticker(
-                    chat_id=chat_id,
-                    sticker=FSInputFile(f"{chat_id}.webm"),
-                    emoji="🎁"
-                )
+            stickerified_images.save(f"{chat_id}_result.jpeg")
+            await bot.send_photo(chat_id,
+                                 photo=FSInputFile(path=f"{chat_id}_result.jpeg"),
+                                 caption="Type number from 1 to 9 to pick up sticker."
+                                 )
 
         except Exception as e:
             print(e)
@@ -114,6 +118,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
 
 def setup_handlers(router: Router):
+    router.message.register(handle_selection, F.text.lower().in_(['1', '2', '3', '4', '5', '6', '7', '8', '9']))
     router.message.register(handle_start, CommandStart())
     router.message.register(handle_photo, F.content_type.in_({'photo'}))
     router.message.register(handle_debug, Command("debug"))

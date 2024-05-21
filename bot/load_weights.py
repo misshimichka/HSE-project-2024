@@ -15,7 +15,7 @@ from generate_sticker import models
 
 opt = Namespace(
     config='config/vox-256.yaml',
-    checkpoint='/kaggle/input/checkpoint/00000099-checkpoint.pth.tar',
+    checkpoint='checkpoint/00000099-checkpoint.pth.tar',
     source_image='img.jpg',
     relative=True,
     adapt_scale=True,

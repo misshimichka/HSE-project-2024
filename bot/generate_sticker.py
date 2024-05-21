@@ -44,7 +44,7 @@ def load_pipeline(mode):
         local_files_only=True
     )
 
-    pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
+    # pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
 
     pipeline.load_ip_adapter(
         pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
@@ -67,13 +67,25 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
+def white_board(img):
+    max_h = max_w = max(img.size[0], img.size[1])
+    white = Image.new('RGB', (max_h, max_w), (255, 255, 255))
+
+    x = int((white.size[0] - img.size[0]) / 2)
+    y = int((white.size[1] - img.size[1]) / 2)
+
+    white.paste(img, (x, y))
+    return white
+
+
 def crop_image(im):
     if isinstance(im, Image.Image):
+        im.thumbnail((512, 512), Image.LANCZOS)
         im = np.array(im)
     elif isinstance(im, str) and os.path.exists(im):
-        im = cv2.imread(im)
-        im = cv2.resize(im, (512, 512))
-        im = im[:, :, ::-1]
+        im = Image.open(im)
+        im.thumbnail((512, 512), Image.LANCZOS)
+        im = np.array(im)
     else:
         raise Exception("Can't handle img")
 
@@ -90,8 +102,9 @@ def crop_image(im):
     cropped_img = im[y_min:y_max, x_min:x_max]
 
     im_pil = Image.fromarray(cropped_img)
-    img = im_pil.resize((512, 512))
-    return img
+    im_pil.thumbnail((512, 512), Image.LANCZOS)
+    reshaped = white_board(im_pil).resize((512, 512))
+    return reshaped
 
 
 def generate(original_image, mode, chat_id):
@@ -114,11 +127,12 @@ def generate(original_image, mode, chat_id):
         num_inference_steps=4,
         image_guidance_scale=1,
         guidance_scale=2,
-    )
+        num_images_per_prompt=4
+    ).images
 
     torch.cuda.empty_cache()
 
     for idx, img in enumerate(edited_image):
         img.save(f"result{idx}_{chat_id}.webp", "webp")
 
-    return image_grid(edited_image, 3, 1)
+    return image_grid(edited_image, 2, 2)

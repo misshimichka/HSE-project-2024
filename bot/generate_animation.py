@@ -1,9 +1,12 @@
 import torch
 
 import cv2
+import imageio
 import numpy as np
 from tqdm import tqdm
-from PIL import Image
+
+from skimage.transform import resize
+from skimage import img_as_ubyte
 
 from animate import normalize_kp
 
@@ -11,19 +14,6 @@ from load_weights import load_checkpoints, opt
 
 
 generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
-
-
-def get_frames(file_path):
-    cap = cv2.VideoCapture(file_path)
-
-    frames = []
-    while cap.isOpened():
-        ret, frame = cap.read()
-        frame.resize((256, 256))
-        frames.append(frame)
-
-    cap.release()
-    return frames
 
 
 def save_video(frames, output_path):
@@ -79,22 +69,20 @@ def make_animation(
 
 
 def generate_animation(image_path, video_path, output_path):
-    source_image = Image.open(image_path)
-    frames = []
+    source_image = imageio.imread(image_path)
+    reader = imageio.get_reader(video_path)
+    fps = reader.get_meta_data()['fps']
+    driving_video = []
     try:
-        frames = get_frames(video_path)
-    except RuntimeError as rt_e:
-        print(rt_e)
-        return
+        for im in reader:
+            driving_video.append(im)
+    except RuntimeError:
+        pass
+    reader.close()
 
-    source_image = np.array(source_image.resize((256, 256)))
+    source_image = resize(source_image, (256, 256))[..., :3]
+    driving_video = [resize(frame, (256, 256))[..., :3] for frame in driving_video]
 
-    sources, drivings, predictions = make_animation(
-        source_image,
-        frames,
-        relative=opt.relative,
-        adapt_movement_scale=opt.adapt_scale,
-        cpu=opt.cpu
-    )
+    sources, drivings, predictions = make_animation(source_image, driving_video, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu)
 
-    save_video(output_path, predictions)
+    imageio.mimsave(output_path, [img_as_ubyte(p) for p in predictions], fps=fps)
