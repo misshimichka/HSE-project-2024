@@ -14,6 +14,7 @@ from generate_sticker import *
 from generate_animation import *
 
 photo_storage = {}
+animation_storage = {}
 
 if sys.version_info[0] < 3:
     raise Exception("You must use Python 3 or higher. Recommended version is Python 3.7")
@@ -34,28 +35,33 @@ def get_styles_markup():
     return markup
 
 
+def get_animations_markup():
+    wow_btn = types.InlineKeyboardButton(text="Wow", callback_data="wow")
+    sigma_btn = types.InlineKeyboardButton(text="Sigma", callback_data="sigma")
+
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[[wow_btn, sigma_btn]]
+    )
+
+    return markup
+
+
 async def handle_selection(message: types.Message):
     index = int(message.text) - 1
     chat_id = message.chat.id
+
+    animation_storage[chat_id] = index
+
     await bot.send_sticker(
         chat_id=chat_id,
         sticker=FSInputFile(f"result{index}_{chat_id}.webp"),
         emoji="🎁",
     )
 
+    await message.reply("Choose your animation:", reply_markup=get_animations_markup())
+
     await bot.send_message(
         chat_id, "Started generating your animation!"
-    )
-
-    generate_animation(
-        image_path=f"result{index}_{chat_id}.webp",
-        video_path='wow-grey.mp4',
-        output_path=f"{chat_id}.mp4"
-    )
-
-    await bot.send_video(
-        chat_id=chat_id,
-        video=FSInputFile(f"{chat_id}.mp4")
     )
 
 
@@ -81,10 +87,24 @@ async def handle_debug(message: types.Message):
     print(photo_storage)
 
 
-async def process_stickerify_callback(callback_query: types.CallbackQuery):
-    chat_id = callback_query.from_user.id
-    sticker_style = callback_query.data
+async def process_animation(chat_id, style):
+    try:
+        generate_animation(
+            image_path=f"result{animation_storage[chat_id]}_{chat_id}.webp",
+            style=style,
+            output_path=f"{chat_id}.mp4"
+        )
 
+        await bot.send_video(
+            chat_id=chat_id,
+            video=FSInputFile(f"{chat_id}.mp4")
+        )
+    except Exception as e:
+        print(e)
+        await bot.send_message(chat_id, f"Sorry, an error occurred.\n{e}")
+
+
+async def process_sticker(chat_id, style):
     if chat_id in photo_storage.keys() and len(photo_storage[chat_id]) > 0:
         file_id = photo_storage[chat_id].popleft()
         try:
@@ -95,7 +115,7 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
             img = Image.open(contents)
 
             await bot.send_message(chat_id, "Started generating your sticker! 👨‍🔬")
-            stickerified_images = generate(img, sticker_style, chat_id)
+            stickerified_images = generate(img, style, chat_id)
             if not stickerified_images:
                 await bot.send_message(chat_id, "Unfortunately, we couldn't find a human face on your "
                                                 "photo, or there were too many of them 😰 Please, "
@@ -114,6 +134,16 @@ async def process_stickerify_callback(callback_query: types.CallbackQuery):
 
     else:
         await bot.send_message(chat_id, "We couldn't find your photo. Please send it again.")
+
+
+async def process_stickerify_callback(callback_query: types.CallbackQuery):
+    chat_id = callback_query.from_user.id
+    sticker_style = callback_query.data
+
+    if sticker_style not in models.keys():
+        await process_animation(chat_id, sticker_style)
+    else:
+        await process_sticker(chat_id, sticker_style)
 
 
 def setup_handlers(router: Router):

@@ -10,8 +10,21 @@ from sync_batchnorm import DataParallelWithCallback
 
 import face_detection
 
-from generate_sticker import models
+model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
+model_cat_id = "misshimichka/pix2pix_cat_ears"
+model_clown_id = "misshimichka/pix2pix_clown_faces"
+model_butterfly_id = "misshimichka/pix2pix_butterflies"
+model_pink_id = "misshimichka/pix2pix_pink_hair"
+model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
 
+models = {
+    "default": model_id,
+    "flowers": model_flowers_id,
+    "cat": model_cat_id,
+    "butterfly": model_butterfly_id,
+    "clown": model_clown_id,
+    "pink": model_pink_id
+}
 
 opt = Namespace(
     config='config/vox-256.yaml',

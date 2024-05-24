@@ -12,6 +12,10 @@ from animate import normalize_kp
 
 from load_weights import load_checkpoints, opt
 
+styles = {
+    "wow": "wow-grey.mp4",
+    "sigma": "patrick-bateman-sigma.gif"
+}
 
 generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
 
@@ -68,10 +72,14 @@ def make_animation(
     return sources, drivings, predictions
 
 
-def generate_animation(image_path, video_path, output_path):
+def generate_animation(image_path, style, output_path):
     source_image = imageio.imread(image_path)
-    reader = imageio.get_reader(video_path)
-    fps = reader.get_meta_data()['fps']
+    reader = imageio.get_reader(styles[style])
+    metadata = reader.get_meta_data()
+    if "fps" in metadata:
+        fps = metadata["fps"]
+    else:
+        fps = 15
     driving_video = []
     try:
         for im in reader:
@@ -83,6 +91,18 @@ def generate_animation(image_path, video_path, output_path):
     source_image = resize(source_image, (256, 256))[..., :3]
     driving_video = [resize(frame, (256, 256))[..., :3] for frame in driving_video]
 
-    sources, drivings, predictions = make_animation(source_image, driving_video, relative=opt.relative, adapt_movement_scale=opt.adapt_scale, cpu=opt.cpu)
+    sources, drivings, predictions = make_animation(
+        source_image,
+        driving_video,
+        relative=opt.relative,
+        adapt_movement_scale=opt.adapt_scale,
+        cpu=opt.cpu
+    )
 
     imageio.mimsave(output_path, [img_as_ubyte(p) for p in predictions], fps=fps)
+
+    with imageio.imopen(output_path[:-4] + ".webm", "w", plugin="pyav") as out_file:
+        out_file.init_video_stream("vp9", fps=fps)
+
+        for frame in imageio.imiter(output_path, plugin="pyav"):
+            out_file.write_frame(frame)

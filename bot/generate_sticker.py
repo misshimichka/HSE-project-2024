@@ -16,6 +16,7 @@ model_butterfly_id = "misshimichka/pix2pix_butterflies"
 model_pink_id = "misshimichka/pix2pix_pink_hair"
 model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
 
+
 models = {
     "default": model_id,
     "flowers": model_flowers_id,
@@ -43,8 +44,6 @@ def load_pipeline(mode):
         cache_dir="lcm",
         local_files_only=True
     )
-
-    # pipeline.generator = torch.Generator(device='cuda:0').manual_seed(42)
 
     pipeline.load_ip_adapter(
         pretrained_model_name_or_path_or_dict="h94/IP-Adapter",
