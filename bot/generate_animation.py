@@ -14,7 +14,8 @@ from load_weights import load_checkpoints, opt
 
 styles = {
     "wow": "wow-grey.mp4",
-    "sigma": "patrick-bateman-sigma.gif"
+    "sigma": "patrick-bateman-sigma.gif",
+    "rock": "the-rock-eyebrow-the-rock-sus.gif"
 }
 
 generator, kp_detector = load_checkpoints(config_path=opt.config, checkpoint_path=opt.checkpoint, cpu=opt.cpu)
