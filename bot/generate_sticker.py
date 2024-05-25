@@ -106,7 +106,7 @@ def crop_image(im):
     return reshaped
 
 
-def generate(original_image, mode, chat_id):
+def generate(original_image, mode, photo_uuid):
     print("Loading style...")
     print(mode)
 
@@ -132,6 +132,6 @@ def generate(original_image, mode, chat_id):
     torch.cuda.empty_cache()
 
     for idx, img in enumerate(edited_image):
-        img.save(f"result{idx}_{chat_id}.webp", "webp")
+        img.save(f"result_{idx}_{photo_uuid}.webp", "webp")
 
     return image_grid(edited_image, 2, 2)
