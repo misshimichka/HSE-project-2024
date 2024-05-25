@@ -38,9 +38,10 @@ def get_styles_markup():
 def get_animations_markup():
     wow_btn = types.InlineKeyboardButton(text="Wow", callback_data="wow")
     sigma_btn = types.InlineKeyboardButton(text="Sigma", callback_data="sigma")
+    rock_btn = types.InlineKeyboardButton(text="Rock", callback_data="rock")
 
     markup = types.InlineKeyboardMarkup(
-        inline_keyboard=[[wow_btn, sigma_btn]]
+        inline_keyboard=[[wow_btn, sigma_btn], [rock_btn]]
     )
 
     return markup
@@ -95,9 +96,9 @@ async def process_animation(chat_id, style):
             output_path=f"{chat_id}.mp4"
         )
 
-        await bot.send_video(
+        await bot.send_sticker(
             chat_id=chat_id,
-            video=FSInputFile(f"{chat_id}.mp4")
+            sticker=FSInputFile(f"{chat_id}.webm")
         )
     except Exception as e:
         print(e)
