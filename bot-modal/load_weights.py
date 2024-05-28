@@ -4,27 +4,12 @@ from argparse import Namespace
 
 import torch
 
-from modules.keypoint_detector import KPDetector
-import modules.generator as GEN
-from sync_batchnorm import DataParallelWithCallback
+from common import *
 
-import face_detection
-
-model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
-model_cat_id = "misshimichka/pix2pix_cat_ears"
-model_clown_id = "misshimichka/pix2pix_clown_faces"
-model_butterfly_id = "misshimichka/pix2pix_butterflies"
-model_pink_id = "misshimichka/pix2pix_pink_hair"
-model_id = "misshimichka/instructPix2PixCartoon_4860_ckpt"
-
-models = {
-    "default": model_id,
-    "flowers": model_flowers_id,
-    "cat": model_cat_id,
-    "butterfly": model_butterfly_id,
-    "clown": model_clown_id,
-    "pink": model_pink_id
-}
+with image.imports():
+    from modules.keypoint_detector import KPDetector
+    import modules.generator as GEN
+    from sync_batchnorm import DataParallelWithCallback
 
 opt = Namespace(
     config='config/vox-256.yaml',
@@ -81,28 +66,3 @@ def load_checkpoints(config_path, checkpoint_path, cpu=False):
     kp_detector.eval()
 
     return generator, kp_detector
-
-
-def load_weights():
-    from huggingface_hub import snapshot_download
-
-    snapshot_download(
-        "h94/IP-Adapter",
-        cache_dir="adapter"
-    )
-    snapshot_download(
-        repo_id="latent-consistency/lcm-lora-sdv1-5",
-        cache_dir="lcm"
-    )
-
-    for key in models:
-        snapshot_download(
-            models[key],
-            cache_dir=f"{key}"
-        )
-
-    detector = face_detection.build_detector(
-        "DSFDDetector",
-        confidence_threshold=.5,
-        nms_iou_threshold=.3
-    )

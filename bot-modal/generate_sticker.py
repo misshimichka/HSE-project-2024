@@ -1,13 +1,12 @@
 import torch
 
 import os
-import cv2
 import numpy as np
 from PIL import Image
 
 from diffusers import StableDiffusionInstructPix2PixPipeline, LCMScheduler
 
-import face_detection
+from common import *
 
 model_flowers_id = "misshimichka/pix2pix_people_flowers_v2"
 model_cat_id = "misshimichka/pix2pix_cat_ears"
@@ -106,7 +105,8 @@ def crop_image(im):
     return reshaped
 
 
-def generate(original_image, mode, photo_uuid):
+@app.function(image=image, gpu="T4")
+def generate(original_image, mode, chat_id):
     print("Loading style...")
     print(mode)
 
@@ -131,7 +131,4 @@ def generate(original_image, mode, photo_uuid):
 
     torch.cuda.empty_cache()
 
-    for idx, img in enumerate(edited_image):
-        img.save(f"result_{idx}_{photo_uuid}.webp", "webp")
-
-    return image_grid(edited_image, 2, 2)
+    return image_grid(edited_image, 2, 2), edited_image
