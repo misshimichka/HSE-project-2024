@@ -15,7 +15,7 @@ if sys.version_info[0] < 3:
     raise Exception("You must use Python 3 or higher. Recommended version is Python 3.7")
 
 
-@app.function(image=image, secrets=[modal.Secret.from_name("hse-bot-modal-token")])
+@app.function(image=image, secrets=[modal.Secret.from_name("hse-bot-token")])
 @modal.asgi_app()
 def run_app():
     router = Router()

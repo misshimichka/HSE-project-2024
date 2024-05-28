@@ -95,7 +95,7 @@ async def generate_and_send_animation(chat_id, style, choice):
         )
 
         animation, fps = generate_animation(
-            img=sticker_storage[chat_id][choice],
+            img=sticker_storage[chat_id][choice - 1],
             style=style
         )
 
@@ -171,7 +171,7 @@ async def handle_choice_callback(callback_query: types.CallbackQuery, callback_d
     photo_uuid = callback_data.photo_uuid
 
     buffer = io.BytesIO()
-    sticker_storage[chat_id][choice].save(buffer, format='webp')
+    sticker_storage[chat_id][choice - 1].save(buffer, format='webp')
 
     try:
         await web_app.state.bot.send_sticker(
