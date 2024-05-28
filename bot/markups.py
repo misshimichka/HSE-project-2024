@@ -1,6 +1,6 @@
 from aiogram import types
 
-from bot.callbacks import StyleCallbackData, ChoiceCallbackData, AnimationCallbackData
+from callbacks import StyleCallbackData, ChoiceCallbackData, AnimationCallbackData
 
 
 def get_styles_markup(photo_uuid: str):
