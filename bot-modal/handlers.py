@@ -122,8 +122,9 @@ async def generate_and_send_animation(chat_id, style, choice, photo_uuid):
 
 async def handle_start(message: types.Message):
     await message.reply(
-        "Welcome to Stickerify bot-modal 77! 🥶\n"
-        "Send me a photo and I will create your own sticker 👠"
+        "Welcome to Stickerify bot-modal! 🥶\n"
+        "Send me a photo and I will create your own sticker 👠\n"
+        "I am also able to create different animations🤩"
     )
 
 
