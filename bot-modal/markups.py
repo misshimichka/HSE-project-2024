@@ -48,7 +48,7 @@ def get_styles_markup(photo_uuid: str):
     return markup
 
 
-def get_selection_markup(photo_uuid: str):
+def get_choice_markup(photo_uuid: str):
     choice_1 = types.InlineKeyboardButton(
         text="1️⃣",
         callback_data=ChoiceCallbackData(

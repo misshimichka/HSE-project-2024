@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from callbacks import StyleCallbackData, ChoiceCallbackData, AnimationCallbackData
-from markups import get_selection_markup, get_animations_markup, get_styles_markup
+from markups import get_choice_markup, get_animations_markup, get_styles_markup
 from generate_animation import *
 from generate_sticker import *
 from common import *
@@ -64,13 +64,13 @@ async def generate_and_send_sticker(chat_id, style, photo_uuid):
 
             buffer = io.BytesIO()
             grid.save(buffer, format='webp')
-            sticker_storage[chat_id] = stickerified_images
+            sticker_storage[photo_uuid] = stickerified_images
 
             await web_app.state.bot.send_photo(
                 chat_id=chat_id,
-                photo=BufferedInputFile(buffer.getvalue(), filename=f"grid_{chat_id}.webp"),
+                photo=BufferedInputFile(buffer.getvalue(), filename=f"grid_{photo_uuid}.webp"),
                 caption="Choose the generation you like!",
-                reply_markup=get_selection_markup(photo_uuid)
+                reply_markup=get_choice_markup(photo_uuid)
             )
 
         except Exception as e:
@@ -87,7 +87,7 @@ async def generate_and_send_sticker(chat_id, style, photo_uuid):
         )
 
 
-async def generate_and_send_animation(chat_id, style, choice):
+async def generate_and_send_animation(chat_id, style, choice, photo_uuid):
     try:
         await web_app.state.bot.send_message(
             chat_id=chat_id,
@@ -95,21 +95,21 @@ async def generate_and_send_animation(chat_id, style, choice):
         )
 
         animation, fps = generate_animation(
-            img=sticker_storage[chat_id][choice - 1],
+            img=sticker_storage[photo_uuid][choice - 1],
             style=style
         )
 
-        imageio.mimsave(f"{chat_id}.mp4", [img_as_ubyte(p) for p in animation], fps=fps)
+        imageio.mimsave(f"animation_{photo_uuid}_{choice}.mp4", [img_as_ubyte(p) for p in animation], fps=fps)
 
-        with imageio.imopen(f"{chat_id}.webm", "w", plugin="pyav") as out_file:
+        with imageio.imopen(f"animation_{photo_uuid}_{choice}.webm", "w", plugin="pyav") as out_file:
             out_file.init_video_stream("vp9", fps=fps)
 
-            for frame in imageio.imiter(f"{chat_id}.mp4", plugin="pyav"):
+            for frame in imageio.imiter(f"animation_{photo_uuid}_{choice}.mp4", plugin="pyav"):
                 out_file.write_frame(frame)
 
         await web_app.state.bot.send_sticker(
             chat_id=chat_id,
-            sticker=FSInputFile(f"{chat_id}.webm")
+            sticker=FSInputFile(f"animation_{photo_uuid}_{choice}.webm")
         )
 
     except Exception as e:
@@ -122,13 +122,15 @@ async def generate_and_send_animation(chat_id, style, choice):
 
 async def handle_start(message: types.Message):
     await message.reply(
-        "Welcome to Stickerify bot-modal! 🥶\n"
+        "Welcome to Stickerify bot-modal 77! 🥶\n"
         "Send me a photo and I will create your own sticker 👠"
     )
 
 
 async def handle_debug(message: types.Message):
     print(photo_storage)
+    print(sticker_storage)
+    print(photo_uuid_dict)
 
 
 async def handle_photo(message: types.Message):
@@ -144,18 +146,15 @@ async def handle_photo(message: types.Message):
 
 
 async def handle_animation_callback(callback_query: types.CallbackQuery, callback_data: AnimationCallbackData):
-    await callback_query.answer()
-
     chat_id = callback_query.from_user.id
     animation_style = callback_data.animation_style
     choice = callback_data.choice
+    photo_uuid = callback_data.photo_uuid
 
-    await generate_and_send_animation(chat_id, animation_style, choice)
+    await generate_and_send_animation(chat_id, animation_style, choice, photo_uuid)
 
 
 async def handle_style_callback(callback_query: types.CallbackQuery, callback_data: StyleCallbackData):
-    await callback_query.answer()
-
     chat_id = callback_query.from_user.id
     style = callback_data.style
     photo_uuid = callback_data.photo_uuid
@@ -164,19 +163,17 @@ async def handle_style_callback(callback_query: types.CallbackQuery, callback_da
 
 
 async def handle_choice_callback(callback_query: types.CallbackQuery, callback_data: ChoiceCallbackData):
-    await callback_query.answer()
-
     chat_id = callback_query.from_user.id
     choice = callback_data.choice
     photo_uuid = callback_data.photo_uuid
 
     buffer = io.BytesIO()
-    sticker_storage[chat_id][choice - 1].save(buffer, format='webp')
+    sticker_storage[photo_uuid][choice - 1].save(buffer, format='webp')
 
     try:
         await web_app.state.bot.send_sticker(
             chat_id=chat_id,
-            sticker=BufferedInputFile(buffer.getvalue(), filename=f"{chat_id}.webp"),
+            sticker=BufferedInputFile(buffer.getvalue(), filename=f"result_{photo_uuid}_{choice}.webp"),
             emoji="🎁",
             reply_markup=get_animations_markup(photo_uuid, choice)
         )
